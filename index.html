@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Apartment Hunter - צייד הדירות</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>body { font-family: 'Rubik', sans-serif; }</style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4 md:p-8">
+  <div class="max-w-4xl mx-auto space-y-6">
+    
+    <!-- כותרת -->
+    <header class="text-center py-4 border-b border-slate-700">
+      <h1 class="text-3xl font-bold text-indigo-400">🏠 Apartment Hunter</h1>
+      <p class="text-slate-400 text-sm mt-1">מערכת אוטומטית לסריקה ומציאת דירות</p>
+    </header>
+
+    <!-- הגדרות -->
+    <section class="bg-slate-800 p-6 rounded-xl shadow-lg border border-slate-700 space-y-4">
+      <h2 class="text-xl font-semibold text-indigo-300">⚙️ הגדרות מערכת</h2>
+      
+      <div>
+        <label class="block text-sm mb-1">מפתח Gemini API:</label>
+        <input type="password" id="geminiKey" class="w-full p-2.5 rounded bg-slate-900 border border-slate-600 focus:border-indigo-500 text-left dir-ltr">
+      </div>
+
+      <div>
+        <label class="block text-sm mb-1">מודל Gemini:</label>
+        <select id="geminiModel" class="w-full p-2.5 rounded bg-slate-900 border border-slate-600 focus:border-indigo-500">
+          <option value="gemini-2.5-flash">gemini-2.5-flash (מומלץ)</option>
+          <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-sm mb-1">כתובת Discord Webhook:</label>
+        <input type="text" id="discordUrl" class="w-full p-2.5 rounded bg-slate-900 border border-slate-600 focus:border-indigo-500 text-left dir-ltr" placeholder="https://discord.com/api/webhooks/...">
+      </div>
+
+      <div class="flex gap-3 pt-2">
+        <button onclick="saveSettings()" class="bg-indigo-600 hover:bg-indigo-500 px-6 py-2.5 rounded font-medium transition">שמירת הגדרות</button>
+        <button onclick="testDiscord()" class="bg-slate-700 hover:bg-slate-600 px-4 py-2.5 rounded transition text-sm">בדיקת Discord</button>
+      </div>
+      <p id="statusMsg" class="text-sm font-medium mt-2"></p>
+    </section>
+
+    <!-- חיפוש חדש -->
+    <section class="bg-slate-800 p-6 rounded-xl shadow-lg border border-slate-700 space-y-4">
+      <h2 class="text-xl font-semibold text-indigo-300">🔍 קריטריונים לחיפוש</h2>
+      <textarea id="searchPrompt" rows="3" class="w-full p-3 rounded bg-slate-900 border border-slate-600 focus:border-indigo-500" placeholder="לדוגמה: דירת 3 חדרים בעזריה, בן שמן או לוד, עד 5,500 ש״ח"></textarea>
+      
+      <div>
+        <label class="block text-sm mb-1">כתובת סריקה (URL מ-יד2 / מדלן):</label>
+        <input type="text" id="targetUrl" class="w-full p-2.5 rounded bg-slate-900 border border-slate-600 focus:border-indigo-500 text-left dir-ltr" placeholder="https://www.yad2.co.il/realestate/rent...">
+      </div>
+
+      <button onclick="runScan()" class="w-full bg-emerald-600 hover:bg-emerald-500 py-3 rounded-lg font-bold text-lg transition">🚀 הפעל סריקה עכשיו</button>
+    </section>
+
+    <!-- תוצאות -->
+    <section class="bg-slate-800 p-6 rounded-xl shadow-lg border border-slate-700">
+      <h2 class="text-xl font-semibold text-indigo-300 mb-4">📋 דירות שנמצאו</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-right text-sm">
+          <thead class="bg-slate-900 text-slate-400 border-b border-slate-700">
+            <tr>
+              <th class="p-3">עיר/אזור</th>
+              <th class="p-3">מחיר</th>
+              <th class="p-3">חדרים</th>
+              <th class="p-3">תיאור</th>
+              <th class="p-3">קישור</th>
+            </tr>
+          </thead>
+          <tbody id="resultsTable" class="divide-y divide-slate-700">
+            <tr><td colspan="5" class="p-4 text-center text-slate-500">טרם בוצעה סריקה</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // טעינת הגדרות שמורות
+    document.getElementById('geminiKey').value = localStorage.getItem('geminiKey') || '';
+    document.getElementById('geminiModel').value = localStorage.getItem('geminiModel') || 'gemini-2.5-flash';
+    document.getElementById('discordUrl').value = localStorage.getItem('discordUrl') || '';
+    document.getElementById('searchPrompt').value = localStorage.getItem('searchPrompt') || '';
+    document.getElementById('targetUrl').value = localStorage.getItem('targetUrl') || '';
+
+    function saveSettings() {
+      localStorage.setItem('geminiKey', document.getElementById('geminiKey').value);
+      localStorage.setItem('geminiModel', document.getElementById('geminiModel').value);
+      localStorage.setItem('discordUrl', document.getElementById('discordUrl').value);
+      localStorage.setItem('searchPrompt', document.getElementById('searchPrompt').value);
+      localStorage.setItem('targetUrl', document.getElementById('targetUrl').value);
+      showStatus('ההגדרות שנשמרו בהצלחה!', 'text-emerald-400');
+    }
+
+    function showStatus(text, colorClass) {
+      const el = document.getElementById('statusMsg');
+      el.textContent = text;
+      el.className = `text-sm font-medium mt-2 ${colorClass}`;
+    }
+
+    async function testDiscord() {
+      const webhookUrl = document.getElementById('discordUrl').value;
+      if (!webhookUrl) return alert('נא להזין כתובת Webhook');
+
+      showStatus('שולח הודעת בדיקה...', 'text-yellow-400');
+      try {
+        const res = await fetch('/api/discord', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ webhookUrl, message: '🔔 בדיקת חיבור מ-Apartment Hunter עברה בהצלחה!' })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showStatus('הודעת בדיקה נשלחה בהצלחה ל-Discord!', 'text-emerald-400');
+        } else {
+          showStatus('שגיאה: ' + data.error, 'text-red-400');
+        }
+      } catch (err) {
+        showStatus('שגיאת תקשורת: ' + err.message, 'text-red-400');
+      }
+    }
+
+    async function runScan() {
+      saveSettings();
+      const apiKey = document.getElementById('geminiKey').value;
+      const model = document.getElementById('geminiModel').value;
+      const targetUrl = document.getElementById('targetUrl').value;
+      const promptText = document.getElementById('searchPrompt').value;
+
+      if (!apiKey || !targetUrl) return alert('נא למלא מפתח Gemini API וכתובת לסריקה');
+
+      showStatus('1/3 סורק את האתר דרך שרת Proxy...', 'text-yellow-400');
+
+      try {
+        // שלב 1: סריקת האתר
+        const proxyRes = await fetch('/api/proxy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: targetUrl })
+        });
+        const proxyData = await proxyRes.json();
+        if (proxyData.error) throw new Error(proxyData.error);
+
+        showStatus('2/3 מנתח תוצאות עם Gemini API...', 'text-yellow-400');
+
+        // שלב 2: ניתוח המידע בעזרת Gemini
+        const systemPrompt = `אתה עוזר למציאת דירות. ניתוח דף ה-HTML הבא והוצא רשימת דירות המתאימות לקריטריון הבא: "${promptText}".
+החזר אך ורק מערך JSON תקני של אובייקטים ללא טקסט נוסף, במבנה הבא:
+[{"city": "שם העיר/אזור", "price": "מחיר בש"ח", "rooms": "מספר חדרים", "description": "תיאור קצר", "link": "קישור למודעה"}]`;
+
+        const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: systemPrompt + "\n\nHTML Content:\n" + proxyData.html }] }]
+          })
+        });
+
+        const geminiData = await geminiRes.json();
+        const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+        // חילוץ JSON
+        const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) throw new Error('Gemini לא החזיר תוצאות במבנה המבוקש');
+
+        const apartments = JSON.parse(jsonMatch[0]);
+        renderResults(apartments);
+
+        showStatus(`סריקה הושלמה! נמצאו ${apartments.length} דירות.`, 'text-emerald-400');
+
+        // שלב 3: שליחה ל-Discord אם מוגדר
+        const discordUrl = document.getElementById('discordUrl').value;
+        if (discordUrl && apartments.length > 0) {
+          const msg = `🏠 **נמצאו ${apartments.length} דירות מתאימות!**\n` + 
+            apartments.slice(0, 3).map(a => `• ${a.city} | ${a.rooms} חדרים | ₪${a.price} | [קישור](${a.link || targetUrl})`).join('\n');
+          fetch('/api/discord', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ webhookUrl: discordUrl, message: msg })
+          });
+        }
+
+      } catch (err) {
+        showStatus('שגיאה בסריקה: ' + err.message, 'text-red-400');
+      }
+    }
+
+    function renderResults(apartments) {
+      const tbody = document.getElementById('resultsTable');
+      if (!apartments || apartments.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-500">לא נמצאו דירות מתאימות</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = apartments.map(a => `
+        <tr class="hover:bg-slate-700/50">
+          <td class="p-3 font-medium">${a.city || '-'}</td>
+          <td class="p-3 text-emerald-400 font-bold">${a.price || '-'}</td>
+          <td class="p-3">${a.rooms || '-'}</td>
+          <td class="p-3 text-slate-300 text-xs max-w-xs truncate">${a.description || '-'}</td>
+          <td class="p-3"><a href="${a.link || '#'}" target="_blank" class="text-indigo-400 underline">צפייה</a></td>
+        </tr>
+      `).join('');
+    }
+  </script>
+</body>
+</html>
