@@ -1,0 +1,13 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/api/proxy"
+  to = "/.netlify/functions/proxy"
+  status = 200
+
+[[redirects]]
+  from = "/api/discord"
+  to = "/.netlify/functions/discord"
+  status = 200
